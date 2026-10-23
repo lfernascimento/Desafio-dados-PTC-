@@ -149,11 +149,7 @@ def dentro_do_limite():
 
 
 def desenhar_chat():
-    st.caption("Olá, sou o assistente da Metalúrgica Mezzalira.")
-    for papel, texto, trechos in st.session_state.historico:
-        with st.chat_message(papel):
-            st.markdown(texto)
-            mostrar_trechos(trechos)
+    st.caption("Olá, sou o assistente de manutenção da Metalúrgica Mezzalira.")
 
     arquivo = PASTA / "perguntas_teste.txt"
     if arquivo.exists():
@@ -167,7 +163,12 @@ def desenhar_chat():
                     texto, trechos = responder_com_seguranca(pergunta)
                     st.markdown(texto)
                     mostrar_trechos(trechos)
-                    time.sleep(9)  # folga para limites por minuto da camada gratuita
+                    time.sleep(4)  # folga para limites por minuto da camada gratuita
+
+    for papel, texto, trechos in st.session_state.historico:
+        with st.chat_message(papel):
+            st.markdown(texto)
+            mostrar_trechos(trechos)
 
     pergunta = st.chat_input("Pergunte sobre os procedimentos de manutenção")
     if pergunta and dentro_do_limite():
@@ -334,8 +335,12 @@ st.title("Metalúrgica Mezzalira")
 st.session_state.setdefault("perguntas_feitas", 0)
 st.session_state.setdefault("historico", [])
 
-aba_pedidos, aba_assistente = st.tabs(["📊 Pedidos", "🔧 Assistente de manutenção"])
-with aba_pedidos:
-    desenhar_pedidos()
-with aba_assistente:
+SECAO_PEDIDOS = "📊 Pedidos"
+SECAO_ASSISTENTE = "🔧 Assistente de manutenção"
+secao = st.segmented_control(
+    "Seção", [SECAO_PEDIDOS, SECAO_ASSISTENTE], default=SECAO_PEDIDOS,
+    key="secao", label_visibility="collapsed")
+if secao == SECAO_ASSISTENTE:
     desenhar_chat()
+else:
+    desenhar_pedidos()
