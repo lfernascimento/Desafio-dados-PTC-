@@ -148,7 +148,7 @@ def dentro_do_limite():
 
 
 def desenhar_chat():
-    st.caption("As respostas vêm somente do manual de manutenção da Mezzalira.")
+    st.caption("Olá, sou o assistente da Metalúrgica Mezzalira.")
     for papel, texto, trechos in st.session_state.historico:
         with st.chat_message(papel):
             st.markdown(texto)
