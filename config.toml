@@ -1,0 +1,5 @@
+New-Item -ItemType Directory -Force .streamlit | Out-Null
+@"
+[theme]
+primaryColor = "#2563EB"
+"@ | Set-Content .streamlit/config.toml
