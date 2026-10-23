@@ -9,8 +9,8 @@ Chave: GEMINI_API_KEY em .streamlit/secrets.toml (ou variável de ambiente).
 import os
 import re
 import sys
-import traceback
 import time
+import traceback
 from pathlib import Path
 
 import altair as alt
@@ -27,13 +27,8 @@ MODELO_EMBEDDING = os.getenv("MODELO_EMBEDDING", "gemini-embedding-001")
 TAMANHO_TRECHO = 700
 SOBREPOSICAO = 120
 QTD_TRECHOS = 3
-MAX_PERGUNTAS_POR_SESSAO = 20
+MAX_PERGUNTAS_POR_SESSAO = 40
 MENSAGEM_INDISPONIVEL = "Não consegui responder agora. Tente novamente em instantes."
-EXEMPLOS_DE_PERGUNTA = [
-    "Qual óleo uso para completar a Prensa Hidráulica 02?",
-    "Quando medir o fluido de corte do Torno CNC 01?",
-    "O que faço se a pressão do compressor passar de 10 bar?",
-]
 
 ACENTO = "#2563EB"
 NEUTRO = "#94A3B8"
@@ -124,12 +119,15 @@ def responder(pergunta):
     return saida.text, trechos
 
 
-def responder_com_seguranca(pergunta):
-    try:
-        return responder(pergunta)
-    except Exception:
-        traceback.print_exc(file=sys.stderr)  # detalhe técnico vai só para o log do servidor
-        return MENSAGEM_INDISPONIVEL, []
+def responder_com_seguranca(pergunta, tentativas=4):
+    for tentativa in range(1, tentativas + 1):
+        try:
+            return responder(pergunta)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)  # detalhe técnico vai só para o log do servidor
+            if tentativa < tentativas:
+                time.sleep(2 * tentativa)  # espera 2s, 4s, 6s antes de tentar de novo
+    return MENSAGEM_INDISPONIVEL, []
 
 
 def mostrar_trechos(trechos):
@@ -142,14 +140,14 @@ def mostrar_trechos(trechos):
 
 def dentro_do_limite():
     if st.session_state.perguntas_feitas >= MAX_PERGUNTAS_POR_SESSAO:
-        st.warning("Você atingiu o limite de perguntas desta sessão.")
+        st.warning("Você atingiu o limite de perguntas desta sessão. Atualize a página para recomeçar.")
         return False
     st.session_state.perguntas_feitas += 1
     return True
 
 
 def desenhar_chat():
-    st.caption("Olá, sou o assistente de manutenção da Metalúrgica Mezzalira.")
+    st.caption("As respostas vêm somente do manual de manutenção da Mezzalira.")
 
     arquivo = PASTA / "perguntas_teste.txt"
     if arquivo.exists():
@@ -163,7 +161,7 @@ def desenhar_chat():
                     texto, trechos = responder_com_seguranca(pergunta)
                     st.markdown(texto)
                     mostrar_trechos(trechos)
-                    time.sleep(4)  # folga para limites por minuto da camada gratuita
+                    time.sleep(2)  # folga para limites por minuto da camada gratuita
 
     for papel, texto, trechos in st.session_state.historico:
         with st.chat_message(papel):
@@ -182,10 +180,17 @@ def desenhar_chat():
             mostrar_trechos(trechos)
         st.session_state.historico.append(("assistant", texto, trechos))
 
+
 # ------------------------------------------------------------------ pedidos
-def rotulo_mes(ano_mes):
-    ano, mes = ano_mes.split("-")
+def rotulo_mes(mes_ano):
+    """'03/2026' (MM/AAAA, como na planilha) -> 'mar/26'."""
+    mes, ano = mes_ano.split("/")
     return f"{MESES_ABREV[int(mes)]}/{ano[2:]}"
+
+
+def chave_mes(mes_ano):
+    mes, ano = mes_ano.split("/")
+    return (int(ano), int(mes))
 
 
 def real(valor):
@@ -207,7 +212,7 @@ def compacto(valor):
 
 @st.cache_data
 def carregar_pedidos():
-    pedidos = pd.read_excel(PASTA / "mezzalira_medalhao.xlsx", sheet_name="Prata")
+    pedidos = pd.read_excel(PASTA / "mezzalira_metalurgica.xlsx", sheet_name="Prata")
     pedidos["Data"] = pd.to_datetime(pedidos["Data"])
     pedidos["Mês rótulo"] = pedidos["Mês"].map(rotulo_mes)
     return pedidos
@@ -278,7 +283,7 @@ def grafico_mapa_calor(filtrada, ordem_cidades, ordem_meses):
 
 def desenhar_pedidos():
     pedidos = carregar_pedidos()
-    rotulos_ordenados = [rotulo_mes(m) for m in sorted(pedidos["Mês"].unique())]
+    rotulos_ordenados = [rotulo_mes(m) for m in sorted(pedidos["Mês"].unique(), key=chave_mes)]
 
     st.subheader("Quem mais comprou, e quando?")
     primeiro, ultimo = st.select_slider(
@@ -326,7 +331,9 @@ def desenhar_pedidos():
         tabela = tabela[[m for m in rotulos_ativos if m in tabela.columns] + ["Total"]]
         st.dataframe(tabela.style.format(real_inteiro), width="stretch")
     with st.expander("Ver lista de pedidos"):
-        st.dataframe(filtrada.drop(columns=["Mês", "Mês rótulo"]), width="stretch", hide_index=True)
+        st.dataframe(filtrada.drop(columns=["Mês", "Mês rótulo"]), width="stretch", hide_index=True,
+                     column_config={"Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+                                    "Valor (R$)": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f")})
 
 
 # ------------------------------------------------------------------- página
